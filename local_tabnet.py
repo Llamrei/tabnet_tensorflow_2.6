@@ -139,7 +139,19 @@ class AttentiveTransformer(Layer):
         
 
 class TabNet(Model):
-    def __init__(self, dim_features, dim_attention, dim_output, output_activation, sparsity=0.0001, num_steps=5, gamma=1.5, *args, **kwargs):
+    def __init__(
+            self, 
+            dim_features,
+            dim_attention, 
+            dim_output, 
+            output_activation, 
+            sparsity=0.0001, 
+            num_steps=5, 
+            gamma=1.5, 
+            feature_shared_layers=2,
+            feature_transformer_layers=2,
+            preprocess_layers=None,
+            *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_step = num_steps
         self.dim_features = dim_features
@@ -149,11 +161,13 @@ class TabNet(Model):
         self.gamma = tf.constant(gamma)
         self.eps = tf.constant(1e-5)
         self.sparsity_coef = sparsity
-        self.shared_layer = SharedFeatureLayer(units=self.dim_attention+self.dim_pre_output, depth=2, name="shared_feature_layer")
+        self.preprocess_layers = preprocess_layers
+        self.shared_layer = SharedFeatureLayer(units=self.dim_attention+self.dim_pre_output, depth=feature_shared_layers, name="shared_feature_layer")
         self.feature_transformers = [
             FeatureTransformer(
                 units=self.dim_attention+self.dim_pre_output,
-                shared_layer=self.shared_layer, 
+                shared_layer=self.shared_layer,
+                depth=feature_transformer_layers,
                 name=f"feat_{i}"
             ) 
             for i in range(num_steps + 1)]
@@ -163,6 +177,8 @@ class TabNet(Model):
         self.attn_activation = _compute_2d_sparsemax
     
     def call(self, data):
+        if self.preprocess_layers is not None:
+            data = self.preprocess_layers(data)
         normed_data = self.norm_in(data)
 
         d0, a_i = tf.split(self.feature_transformers[0](normed_data), 2, axis=-1)
@@ -198,5 +214,11 @@ class TabNet(Model):
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+        self.compiled_metrics.update_state(y, y_pred)
+        return {m.name: m.result() for m in self.metrics}
+    
+    def predict_step(self, data):
+        x, y = data
+        y_pred, _ = self(x, training=False)
         self.compiled_metrics.update_state(y, y_pred)
         return {m.name: m.result() for m in self.metrics}
