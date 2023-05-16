@@ -1,4 +1,13 @@
+.vscode/
+__pycache__/
+
 venv/
 untitled_project/
 figures/
 catboost_info/
+*.mat
+*.data
+*.info
+*.names
+*.zip
+*.gz
