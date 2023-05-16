@@ -85,19 +85,30 @@ class GLULayer(tf.keras.layers.Layer):
         return x1 * sigmoid(x2)
 
 class SharedFeatureLayer(Layer):
-    def __init__(self, units, depth=2, dense_activation="relu", *args, **kwargs):
+    def __init__(self,
+                units,
+                depth=2,
+                dense_activation="relu",
+                virtual_batch_size=None,
+                batch_momentum=0.95,
+                *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.depth = depth
         self.dense_layers = [Dense(units, activation=dense_activation) for _ in range(depth)]
-        self.bn_layers = [BatchNormalization() for _ in range(depth)]
+        self.bn_layers = [
+            BatchNormalization(
+                virtual_batch_size=virtual_batch_size,
+                momentum = batch_momentum
+            ) for _ in range(depth)
+        ]
         self.glu_layers = [GLULayer(units) for _ in range(depth)]
         self.scaling = Rescaling(0.5**0.5)
     
-    def call(self, inputs, *args, **kwargs):
+    def call(self, inputs, training=False, *args, **kwargs):
         x = inputs
         for i in range(self.depth):
             y = self.dense_layers[i](x)
-            y = self.bn_layers[i](y)
+            y = self.bn_layers[i](y, training=training)
             y = self.glu_layers[i](y)
             # Skip first residual connection as input is not guaranteed to be same shape as num units
             if i > 0:
@@ -107,34 +118,53 @@ class SharedFeatureLayer(Layer):
         return x
 
 class FeatureTransformer(Layer):
-    def __init__(self, units, shared_layer, dense_activation="relu", depth=2, *args, **kwargs):
+    def __init__(
+            self,
+            units, 
+            shared_layer, 
+            dense_activation="relu", 
+            depth=2, 
+            virtual_batch_size=None,
+            batch_momentum=0.95,
+            *args, **kwargs):
         super().__init__( *args, **kwargs )
         self.shared_layer = shared_layer
         self.depth = depth
         self.dense_layers = [Dense(units, activation=dense_activation) for _ in range(depth)]
-        self.bn_layers = [BatchNormalization() for _ in range(depth)]
+        self.bn_layers = [
+            BatchNormalization(
+                virtual_batch_size=virtual_batch_size,
+                momentum = batch_momentum
+            ) for _ in range(depth)
+        ]
         self.glu_layers = [GLULayer(units) for _ in range(depth)]
         self.scaling = Rescaling(0.5**0.5)
 
-    def call(self, data):
+    def call(self, data, training=False, *args, **kwargs):
         x = self.shared_layer(data)
         for i in range(self.depth):
             y = self.dense_layers[i](x)
-            y = self.bn_layers[i](y)
+            y = self.bn_layers[i](y, training=training)
             y = self.glu_layers[i](y)
             x = self.scaling(x + y)
 
         return x # Feature Transformer
 
 class AttentiveTransformer(Layer):
-    def __init__(self, units, dense_activation="relu", *args, **kwargs):
+    def __init__(
+            self, 
+            units, 
+            dense_activation="relu", 
+            virtual_batch_size=None,
+            batch_momentum=0.95,
+            *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.dense = Dense(units, activation=dense_activation)
-        self.bn = BatchNormalization()
+        self.bn = BatchNormalization(virtual_batch_size=virtual_batch_size, momentum=batch_momentum)
     
-    def call(self, data):
+    def call(self, data, training=False, *args, **kwargs):
         x = self.dense(data)
-        x = self.bn(x)
+        x = self.bn(x, training=training)
         return x # Attentive
         
 
@@ -150,6 +180,8 @@ class TabNet(Model):
             gamma=1.5, 
             feature_shared_layers=2,
             feature_transformer_layers=2,
+            batch_momentum = 0.95,
+            virtual_batch_size = None,
             preprocess_layers=None,
             *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -162,31 +194,51 @@ class TabNet(Model):
         self.eps = tf.constant(1e-5)
         self.sparsity_coef = sparsity
         self.preprocess_layers = preprocess_layers
-        self.shared_layer = SharedFeatureLayer(units=self.dim_attention+self.dim_pre_output, depth=feature_shared_layers, name="shared_feature_layer")
+        self.shared_layer = SharedFeatureLayer(
+            units=self.dim_attention+self.dim_pre_output, 
+            depth=feature_shared_layers,
+            virtual_batch_size=virtual_batch_size,
+            batch_momentum=batch_momentum, 
+            name="shared_feature_layer")
         self.feature_transformers = [
             FeatureTransformer(
                 units=self.dim_attention+self.dim_pre_output,
                 shared_layer=self.shared_layer,
                 depth=feature_transformer_layers,
+                virtual_batch_size=virtual_batch_size,
+                batch_momentum=batch_momentum, 
                 name=f"feat_{i}"
             ) 
             for i in range(num_steps + 1)]
-        self.attention_layers = [AttentiveTransformer(units=self.dim_features, name=f"attn_{i+1}") for i in range(num_steps)]
-        self.norm_in = BatchNormalization(name="norm_in")
+        self.attention_layers = [
+            AttentiveTransformer(
+                units=self.dim_features, 
+                virtual_batch_size=virtual_batch_size,
+                batch_momentum=batch_momentum, 
+                name=f"attn_{i+1}") 
+            for i in range(num_steps)
+        ]
+        self.norm_in = BatchNormalization(
+            name="norm_in",
+            batch_momentum=batch_momentum,
+            )
         self.output_dense = Dense(dim_output, name="output", activation=output_activation)
         self.attn_activation = _compute_2d_sparsemax
     
-    def call(self, data):
+    def call(self, data, training=False):
         if self.preprocess_layers is not None:
             data = self.preprocess_layers(data)
         normed_data = self.norm_in(data)
 
-        d0, a_i = tf.split(self.feature_transformers[0](normed_data), 2, axis=-1)
+        d0, a_i = tf.split(
+            self.feature_transformers[0](normed_data, training=training), 
+            2, 
+            axis=-1)
         decision = tf.zeros_like(d0)
         priors = []
         entropy = 0.
         for i in range(self.num_step):
-            candidate_mask = self.attention_layers[i](a_i)
+            candidate_mask = self.attention_layers[i](a_i, training=training)
             for prior in priors:
                 candidate_mask = candidate_mask*(self.gamma - prior)
             candidate_mask = self.attn_activation(candidate_mask)
@@ -198,7 +250,7 @@ class TabNet(Model):
             entropy += decision_entropy         
             
             normed_features = normed_data * candidate_mask
-            x = self.feature_transformers[i+1](normed_features)
+            x = self.feature_transformers[i+1](normed_features, training=training)
             d_i, a_i = tf.split(x, 2, axis=-1)
             decision += relu(d_i)
         
@@ -218,6 +270,12 @@ class TabNet(Model):
         return {m.name: m.result() for m in self.metrics}
     
     def predict_step(self, data):
+        x, y = data
+        y_pred, _ = self(x, training=False)
+        self.compiled_metrics.update_state(y, y_pred)
+        return {m.name: m.result() for m in self.metrics}
+
+    def test_step(self, data):
         x, y = data
         y_pred, _ = self(x, training=False)
         self.compiled_metrics.update_state(y, y_pred)
