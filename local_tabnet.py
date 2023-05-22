@@ -99,7 +99,11 @@ class SharedFeatureLayer(Layer):
                 *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.depth = depth
-        self.dense_layers = [Dense(2*units, activation=dense_activation) for _ in range(depth)]
+        self.dense_layers = [Dense(
+            2*units, 
+            activation=dense_activation,
+            use_bias=False
+            ) for _ in range(depth)]
         self.bn_layers = [
             BatchNormalization(
                 virtual_batch_size=virtual_batch_size,
@@ -134,7 +138,12 @@ class FeatureTransformer(Layer):
         super().__init__( *args, **kwargs )
         self.shared_layer = shared_layer
         self.depth = depth
-        self.dense_layers = [Dense(2*units, activation=dense_activation) for _ in range(depth)]
+        self.dense_layers = [
+            Dense(
+            2*units, 
+            activation=dense_activation,
+            use_bias=False
+            ) for _ in range(depth)]
         self.bn_layers = [
             BatchNormalization(
                 virtual_batch_size=virtual_batch_size,
