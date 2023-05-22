@@ -80,9 +80,14 @@ class GLULayer(tf.keras.layers.Layer):
         self.dense = Dense(self.units)
 
     def call(self, inputs):
+        # Also difference here where we have some more parameters relative to the original paper
         x = self.dense(inputs)
         x1, x2 = tf.split(x, 2, axis=-1)
         return x1 * sigmoid(x2)
+
+def glu(act):
+    gate_signal, activation_signal = tf.split(act, 2, axis=-1)
+    return gate_signal * sigmoid(activation_signal)
 
 class SharedFeatureLayer(Layer):
     def __init__(self,
@@ -94,27 +99,26 @@ class SharedFeatureLayer(Layer):
                 *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.depth = depth
-        self.dense_layers = [Dense(units, activation=dense_activation) for _ in range(depth)]
+        self.dense_layers = [Dense(2*units, activation=dense_activation) for _ in range(depth)]
         self.bn_layers = [
             BatchNormalization(
                 virtual_batch_size=virtual_batch_size,
                 momentum = batch_momentum
             ) for _ in range(depth)
         ]
-        self.glu_layers = [GLULayer(units) for _ in range(depth)]
         self.scaling = Rescaling(0.5**0.5)
     
     def call(self, inputs, training=False, *args, **kwargs):
         x = inputs
         for i in range(self.depth):
-            y = self.dense_layers[i](x)
-            y = self.bn_layers[i](y, training=training)
-            y = self.glu_layers[i](y)
+            y = self.dense_layers[i](x) # (B, units*2)
+            y = self.bn_layers[i](y, training=training) # (B, units*2)
+            y = glu(y) # (B, units)
             # Skip first residual connection as input is not guaranteed to be same shape as num units
             if i > 0:
-                x = self.scaling(x + y)
+                x = self.scaling(x + y) # (B, units)
             else:
-                x = y
+                x = y # (B, units)
         return x
 
 class FeatureTransformer(Layer):
@@ -130,14 +134,14 @@ class FeatureTransformer(Layer):
         super().__init__( *args, **kwargs )
         self.shared_layer = shared_layer
         self.depth = depth
-        self.dense_layers = [Dense(units, activation=dense_activation) for _ in range(depth)]
+        self.dense_layers = [Dense(2*units, activation=dense_activation) for _ in range(depth)]
         self.bn_layers = [
             BatchNormalization(
                 virtual_batch_size=virtual_batch_size,
                 momentum = batch_momentum
             ) for _ in range(depth)
         ]
-        self.glu_layers = [GLULayer(units) for _ in range(depth)]
+        # self.glu_layers = [GLULayer(units) for _ in range(depth)]
         self.scaling = Rescaling(0.5**0.5)
 
     def call(self, data, training=False, *args, **kwargs):
@@ -145,7 +149,7 @@ class FeatureTransformer(Layer):
         for i in range(self.depth):
             y = self.dense_layers[i](x)
             y = self.bn_layers[i](y, training=training)
-            y = self.glu_layers[i](y)
+            y = glu(y)
             x = self.scaling(x + y)
 
         return x # Feature Transformer
@@ -220,7 +224,7 @@ class TabNet(Model):
         ]
         self.norm_in = BatchNormalization(
             name="norm_in",
-            batch_momentum=batch_momentum,
+            momentum=batch_momentum,
             )
         self.output_dense = Dense(dim_output, name="output", activation=output_activation)
         self.attn_activation = _compute_2d_sparsemax
@@ -238,10 +242,14 @@ class TabNet(Model):
         priors = []
         entropy = 0.
         for i in range(self.num_step):
+
+            # Main difference to google implementation is usage of prior list?
             candidate_mask = self.attention_layers[i](a_i, training=training)
             for prior in priors:
                 candidate_mask = candidate_mask*(self.gamma - prior)
             candidate_mask = self.attn_activation(candidate_mask)
+            
+            priors.append(candidate_mask)
             decision_entropy = tf.reduce_mean(
                 tf.reduce_sum(
                     -candidate_mask * tf.math.log(candidate_mask + self.eps)/self.num_step,
