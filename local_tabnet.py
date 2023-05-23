@@ -6,6 +6,59 @@ from tensorflow.keras.layers import Lambda, Rescaling
 from tensorflow.keras.activations import relu, sigmoid
 from tensorflow.keras import Model
 
+class CategoryEmbeddingShimLayer(Layer):
+    def __init__(
+            self,
+            cat_idxs=None,
+            num_cats=None, # List of number of categories in each column
+            embed_dim=1, # TODO: make arbitrary sized embedding dim
+            **kwargs):
+        # Assumes cat_idxs are ordered cat int indices, starting on 0
+        super(CategoryEmbeddingShimLayer, self).__init__(**kwargs)
+        self.cat_idxs = cat_idxs
+        self.num_cats = num_cats
+        if isinstance(embed_dim, list):
+            assert len(embed_dim) == len(cat_idxs), f"embed_dim {len(embed_dim)} must be same length as cat_idxs {len(cat_idxs)}"
+        self.embed_dim = 1
+        self.embeddings = []
+        assert len(cat_idxs) == len(num_cats), f"cat_idxs {len(cat_idxs)} must be same length as num_cats {len(num_cats)}"
+    
+    def build(self, input_shape):
+        for i, nrow in enumerate(self.num_cats):
+            if isinstance(self.embed_dim, list):
+                ncol = self.embed_dim[i]
+            else:
+                ncol = self.embed_dim
+
+            embedding = self.add_weight(
+                shape=(nrow, ncol),
+                initializer="uniform",
+                trainable=True,
+                name=f"embedding_{i}"
+            )
+            self.embeddings.append(embedding)
+        super(CategoryEmbeddingShimLayer, self).build(input_shape)
+
+    def call(self, inputs):
+        x = inputs # (B,D) - float/int mix
+        for i, cat_idx in enumerate(self.cat_idxs):
+            x_cat = tf.gather(x, cat_idx, axis=1) # (B,1) - int
+            x_cat = tf.nn.embedding_lookup(self.embeddings[i], tf.cast(x_cat, tf.int32)) # (B,E) - float
+            x = tf.concat([x[:, :cat_idx], x_cat, x[:, cat_idx+1:]], axis=1)
+        return x
+
+    def compute_output_shape(self, input_shape):
+        # Calculate new shape according to cat idxs and num cats in each
+        new_shape = input_shape[1]
+        for i, _ in enumerate(self.cat_idxs):
+            new_shape -= 1
+            if isinstance(self.embed_dim, list):
+                new_shape += self.embed_dim[i]
+            else:
+                new_shape += self.embed_dim
+        return (input_shape[0], new_shape)
+    
+
 
 # Sparsemax activation function implemented with tensorflow ops
 # https://arxiv.org/pdf/1602.02068.pdf
