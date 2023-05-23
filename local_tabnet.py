@@ -102,7 +102,7 @@ class SharedFeatureLayer(Layer):
         self.dense_layers = [Dense(
             2*units, 
             activation=dense_activation,
-            use_bias=False
+            use_bias=True
             ) for _ in range(depth)]
         self.bn_layers = [
             BatchNormalization(
@@ -142,7 +142,7 @@ class FeatureTransformer(Layer):
             Dense(
             2*units, 
             activation=dense_activation,
-            use_bias=False
+            use_bias=True,
             ) for _ in range(depth)]
         self.bn_layers = [
             BatchNormalization(
