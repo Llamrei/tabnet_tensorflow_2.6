@@ -43,7 +43,14 @@ class CategoryEmbeddingShimLayer(Layer):
         x = inputs # (B,D) - float/int mix
         for i, cat_idx in enumerate(self.cat_idxs):
             x_cat = tf.gather(x, cat_idx, axis=1) # (B,1) - int
-            x_cat = tf.nn.embedding_lookup(self.embeddings[i], tf.cast(x_cat, tf.int32)) # (B,E) - float
+            try:
+                x_cat = tf.nn.embedding_lookup(self.embeddings[i], tf.cast(x_cat, tf.int32)) # (B,E) - float
+            except tf.errors.InvalidArgumentError as e:
+                raise tf.errors.InvalidArgumentError(
+                    (f"Error in embedding lookup for categorical column {i} with cat_idx {cat_idx} and num_cats {self.num_cats[i]}.\n"
+                     f"{e.message}.\n"
+                    )
+                )
             x = tf.concat([x[:, :cat_idx], x_cat, x[:, cat_idx+1:]], axis=1)
         return x
 
@@ -248,7 +255,7 @@ class TabNet(Model):
             feature_transformer_layers=2,
             batch_momentum = 0.95,
             virtual_batch_size = None,
-            preprocess_layers=None,
+            preprocess_model=None,
             *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_step = num_steps
@@ -259,7 +266,7 @@ class TabNet(Model):
         self.gamma = tf.constant(gamma)
         self.eps = tf.constant(1e-5)
         self.sparsity_coef = sparsity
-        self.preprocess_layers = preprocess_layers
+        self.preprocess_model = preprocess_model
         self.shared_layer = SharedFeatureLayer(
             units=self.dim_attention+self.dim_pre_output, 
             depth=feature_shared_layers,
@@ -292,8 +299,8 @@ class TabNet(Model):
         self.attn_activation = _compute_2d_sparsemax
     
     def call(self, data, training=False):
-        if self.preprocess_layers is not None:
-            data = self.preprocess_layers(data)
+        if self.preprocess_model is not None:
+            data = self.preprocess_model(data)
         normed_data = self.norm_in(data)
 
         d0, a_i = tf.split(
@@ -339,11 +346,9 @@ class TabNet(Model):
         self.compiled_metrics.update_state(y, y_pred)
         return {m.name: m.result() for m in self.metrics}
     
-    def predict_step(self, data):
-        x, y = data
-        y_pred, _ = self(x, training=False)
-        self.compiled_metrics.update_state(y, y_pred)
-        return {m.name: m.result() for m in self.metrics}
+    def predict_step(self, input):
+        y_pred, _ = self(input, training=False)
+        return y_pred
 
     def test_step(self, data):
         x, y = data
