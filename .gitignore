@@ -11,3 +11,6 @@ catboost_info/
 *.names
 *.zip
 *.gz
+
+!poker-hand-testing.data
+!poker-hand-training-true.data
