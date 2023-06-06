@@ -303,7 +303,6 @@ class TabNet(Model):
         # Some kind of reflection is automatically picking up presence 
         # of these metrics so no need to declare them in property
         self.entropy_loss = Mean(name='mask_entropy')
-        self.total_loss = Mean(name='total_loss')
     
     def call(self, data, training=False):
         if self.preprocess_model is not None:
@@ -337,59 +336,13 @@ class TabNet(Model):
             x = self.feature_transformers[i+1](normed_features, training=training)
             d_i, a_i = tf.split(x, 2, axis=-1)
             decision += relu(d_i)
-        
-        return self.output_dense(decision), entropy
-    
-    def train_step(self, data):
-        x, y = data
-        with tf.GradientTape() as tape:
-            y_pred, entropy = self(x, training=True)
-            # Update default 'loss' metric due to LossContainer
-            loss = self.compiled_loss(y, y_pred, regularization_losses=self.losses)
-            if self.sparsity_coef > 0:
-                loss += self.sparsity_coef * entropy
-        trainable_vars = self.trainable_variables
-        gradients = tape.gradient(loss, trainable_vars)
-        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
-
-        # Update metrics supplied by compile
-        self.compiled_metrics.update_state(y, y_pred)
-
-        # Update custom metrics for TabNet tracking
+        if self.sparsity_coef > 0:
+            self.add_loss(self.sparsity_coef*entropy)
         self.entropy_loss.update_state(entropy)
-        self.total_loss.update_state(loss)
-
-        # Combine and return all metrics
-        all_metrics = {m.name: m.result() for m in self.metrics}
-        all_metrics[self.total_loss.name] = self.total_loss.result()
-        all_metrics[self.entropy_loss.name] = self.entropy_loss.result()
-        return all_metrics
-
-    def predict_step(self, input):
-        y_pred, _ = self(input, training=False)
-        return y_pred
+        return self.output_dense(decision)
 
     def reset_states(self):
+        tf.print(self.metrics_names)
         super().reset_states()
         # This probably gets handled by super() but just in case
         self.entropy_loss.reset_states()
-        self.total_loss.reset_states()
-
-    def test_step(self, data):
-        x, y = data
-        y_pred, entropy = self(x, training=False)
-        # Calculate loss and update default 'loss' metric due to LossContainer
-        loss = self.compiled_loss(y, y_pred)
-        # Update metrics passed in compile
-        self.compiled_metrics.update_state(y, y_pred)
-
-        # Update custom metrics for TabNet tracking
-        self.entropy_loss.update_state(entropy)
-        self.total_loss.update_state(loss)
-
-        # Combine and return all metrics
-        all_metrics = {m.name: m.result() for m in self.metrics}
-        all_metrics[self.total_loss.name] = self.total_loss.result()
-        all_metrics[self.entropy_loss.name] = self.entropy_loss.result()
-
-        return all_metrics
