@@ -266,6 +266,8 @@ class TabNet(Model):
         self.dim_output = dim_output
         self.gamma = tf.constant(gamma)
         self.eps = tf.constant(1e-5)
+        if sparsity < 0 :
+            raise ValueError("Sparsity for tabnet (\lambda in paper) must be non-negative")
         self.sparsity_coef = sparsity
         self.preprocess_model = preprocess_model
         self.shared_layer = SharedFeatureLayer(
