@@ -1,0 +1,50 @@
+TensorFlow 2.0 Upgrade Script
+-----------------------------
+Converted 1 files
+Detected 2 issues that require attention
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+File: /home/alexander/projects/google-research/tabnet/tabnet_model.py
+--------------------------------------------------------------------------------
+/home/alexander/projects/google-research/tabnet/tabnet_model.py:201:24: WARNING: tf.contrib.sparsemax.sparsemax requires manual check. (Manual edit required) `tf.contrib.sparsemax.sparsemax` has been migrated to `tfa.activations.sparsemax` in TensorFlow Addons. The API spec may have changed during the migration. Please see https://github.com/tensorflow/addons for more info.
+/home/alexander/projects/google-research/tabnet/tabnet_model.py:201:24: ERROR: Using member tf.contrib.sparsemax.sparsemax in deprecated module tf.contrib. tf.contrib.sparsemax.sparsemax cannot be converted automatically. tf.contrib will not be distributed with TensorFlow 2.0, please consider an alternative in non-contrib TensorFlow, a community-maintained repository such as tensorflow/addons, or fork the required code.
+================================================================================
+Detailed log follows:
+
+================================================================================
+--------------------------------------------------------------------------------
+Processing file '/home/alexander/projects/google-research/tabnet/tabnet_model.py'
+ outputting to './google_tabnet.py'
+--------------------------------------------------------------------------------
+
+88:9: INFO: Renamed 'tf.variable_scope' to 'tf.compat.v1.variable_scope'
+91:17: INFO: Renamed 'tf.feature_column.input_layer' to 'tf.compat.v1.feature_column.input_layer'
+92:17: INFO: Renamed 'tf.layers.batch_normalization' to 'tf.compat.v1.layers.batch_normalization'
+94:19: INFO: Added keywords to args of function 'tf.shape'
+117:23: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+123:23: INFO: Renamed 'tf.layers.batch_normalization' to 'tf.compat.v1.layers.batch_normalization'
+130:23: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+136:23: INFO: Renamed 'tf.layers.batch_normalization' to 'tf.compat.v1.layers.batch_normalization'
+144:23: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+149:23: INFO: Renamed 'tf.layers.batch_normalization' to 'tf.compat.v1.layers.batch_normalization'
+157:23: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+162:23: INFO: Renamed 'tf.layers.batch_normalization' to 'tf.compat.v1.layers.batch_normalization'
+179:22: INFO: Added keywords to args of function 'tf.reduce_sum'
+180:36: INFO: Renamed keyword argument for tf.reduce_sum from keep_dims to keepdims
+190:24: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+195:24: INFO: Renamed 'tf.layers.batch_normalization' to 'tf.compat.v1.layers.batch_normalization'
+201:24: WARNING: tf.contrib.sparsemax.sparsemax requires manual check. (Manual edit required) `tf.contrib.sparsemax.sparsemax` has been migrated to `tfa.activations.sparsemax` in TensorFlow Addons. The API spec may have changed during the migration. Please see https://github.com/tensorflow/addons for more info.
+201:24: ERROR: Using member tf.contrib.sparsemax.sparsemax in deprecated module tf.contrib. tf.contrib.sparsemax.sparsemax cannot be converted automatically. tf.contrib will not be distributed with TensorFlow 2.0, please consider an alternative in non-contrib TensorFlow, a community-maintained repository such as tensorflow/addons, or fork the required code.
+211:27: INFO: Added keywords to args of function 'tf.reduce_mean'
+212:14: INFO: Added keywords to args of function 'tf.reduce_sum'
+213:33: INFO: Renamed 'tf.log' to 'tf.math.log'
+221:10: INFO: tf.summary.image requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+221:10: INFO: Renamed 'tf.summary.image' to 'tf.compat.v1.summary.image'
+227:6: INFO: tf.summary.image requires manual check. The TF 1.x summary API cannot be automatically migrated to TF 2.0, so symbols have been converted to tf.compat.v1.summary.* and must be migrated manually. Typical usage will only require changes to the summary writing logic, not to individual calls like scalar(). For examples of the new summary API, see the Effective TF 2.0 migration document or check the TF 2.0 TensorBoard tutorials.
+227:6: INFO: Renamed 'tf.summary.image' to 'tf.compat.v1.summary.image'
+237:9: INFO: Renamed 'tf.variable_scope' to 'tf.compat.v1.variable_scope'
+238:15: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+245:9: INFO: Renamed 'tf.variable_scope' to 'tf.compat.v1.variable_scope'
+246:20: INFO: Renamed 'tf.layers.dense' to 'tf.compat.v1.layers.dense'
+--------------------------------------------------------------------------------
+
