@@ -24,13 +24,13 @@ def get_mean_and_empirical_bounds(
 
     """
     if condition_on:
-        resampled_df = df_with_time_index.groupby(condition_on)
+        resampled_df = df_with_time_index[[response_col, condition_on]].groupby(condition_on)
     else:
-        resampled_df = df_with_time_index.copy()
-    resampled_df = resampled_df[response_col].resample(resample_freq)
+        resampled_df = df_with_time_index[[response_col]].copy()
+    resampled_df = resampled_df.resample(resample_freq, include_groups=False)
 
-    mean = resampled_df.mean()
-    category_counts = resampled_df.count()
+    mean = resampled_df.mean()[response_col]
+    category_counts = resampled_df.count()[response_col]
     if mean.index.nlevels == 2:
         # Here we need to make sure to get the lengths of a given category
         # instead of overall DF length
@@ -41,8 +41,8 @@ def get_mean_and_empirical_bounds(
         raise NotImplementedError(f"Cannot handle conditioning on more than one variable.")
         
     if resampled_lengths < df_with_time_index[response_col].shape[0]:
-        lower_bound = resampled_df.quantile(0.025).fillna(mean.bfill())
-        upper_bound = resampled_df.quantile(0.975).fillna(mean.bfill())
+        lower_bound = resampled_df.quantile(0.025)[response_col].fillna(mean.bfill())
+        upper_bound = resampled_df.quantile(0.975)[response_col].fillna(mean.bfill())
         return mean, category_counts, lower_bound, upper_bound
     else:
         return mean, category_counts, None, None
