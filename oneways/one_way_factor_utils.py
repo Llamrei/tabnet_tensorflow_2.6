@@ -8,10 +8,11 @@ import plotly.subplots as ms
 
 
 def get_mean_and_empirical_bounds(
-        df_with_time_index: pd.DataFrame, 
-        resample_freq: str,
+        df: pd.DataFrame, 
+        time_col: str,
         response_col: str,
         condition_on: str = None,
+        resample_freq: str = '1W',
     ):
     """
     This function takes `df_with_time_index` and resamples it following `resample_freq` as 
@@ -23,14 +24,18 @@ def get_mean_and_empirical_bounds(
     If this is a downsample then we also return emprical 95% confidence intervals
 
     """
+    subset = [response_col, time_col]
     if condition_on:
-        resampled_df = df_with_time_index[[response_col, condition_on]].groupby(condition_on)
+        subset.append(condition_on)
+    df = df[subset].copy()
+    grouper = pd.Grouper(key=time_col, freq=resample_freq)
+    if condition_on:
+        resampled_df = df.groupby([condition_on, grouper])
     else:
-        resampled_df = df_with_time_index[[response_col]].copy()
-    resampled_df = resampled_df.resample(resample_freq, include_groups=False)
+        resampled_df = df.groupby(grouper)
 
-    mean = resampled_df.mean()[response_col]
-    category_counts = resampled_df.count()[response_col]
+    mean = resampled_df.mean()
+    category_counts = resampled_df.count()
     if mean.index.nlevels == 2:
         # Here we need to make sure to get the lengths of a given category
         # instead of overall DF length
@@ -40,9 +45,9 @@ def get_mean_and_empirical_bounds(
     else:
         raise NotImplementedError(f"Cannot handle conditioning on more than one variable.")
         
-    if resampled_lengths < df_with_time_index[response_col].shape[0]:
-        lower_bound = resampled_df.quantile(0.025)[response_col].fillna(mean.bfill())
-        upper_bound = resampled_df.quantile(0.975)[response_col].fillna(mean.bfill())
+    if resampled_lengths < df.shape[0]:
+        lower_bound = resampled_df.quantile(0.025).fillna(mean.bfill())
+        upper_bound = resampled_df.quantile(0.975).fillna(mean.bfill())
         return mean, category_counts, lower_bound, upper_bound
     else:
         return mean, category_counts, None, None
@@ -102,20 +107,21 @@ def plot_mean_and_bounds(mean: pd.Series, fig, lower_bound=None, upper_bound=Non
 
     conditions = None
     if mean.index.nlevels == 2:
+        conditioned_on = mean.columns[0]
         conditions = mean.index.levels[0]
         per_condition_count = mean.groupby(level=0).count()
         conditions = per_condition_count[per_condition_count > 0].index
         if top_n_conditions and len(conditions) > top_n_conditions:
-            conditions = per_condition_count.nlargest(top_n_conditions).index
+            conditions = per_condition_count.nlargest(top_n_conditions, conditioned_on).index
 
         for condition in conditions:
             subset = mean.loc[condition]
             fig.add_trace(
                 go.Scatter(
                     x=subset.index,
-                    y=subset,
+                    y=subset[conditioned_on],
                     mode='lines',
-                    name=f"{mean.name} | {condition}",
+                    name=f"{conditioned_on} | {condition}",
                     legendgroup=condition,
                     marker = dict(color=color),
                     visible="legendonly"
@@ -125,13 +131,13 @@ def plot_mean_and_bounds(mean: pd.Series, fig, lower_bound=None, upper_bound=Non
             )
             colors_used.append(color)
             if lower_bound is not None:
-                plot_bounds(lower_bound.loc[condition], upper_bound.loc[condition], color, fig, legendgroup=condition)
+                plot_bounds(lower_bound.loc[condition, conditioned_on], upper_bound.loc[condition, conditioned_on], color, fig, legendgroup=condition)
             color = next(color_gen)
     else:
         fig.add_trace(
             go.Scatter(
                 x=mean.index,
-                y=mean,
+                y=mean[conditioned_on],
                 mode='lines',
                 name=mean.name,
                 legendgroup=mean.name,
@@ -149,14 +155,14 @@ def plot_mean_and_bounds(mean: pd.Series, fig, lower_bound=None, upper_bound=Non
     return fig, colors_used, conditions
 
 
-def plot_value_and_counts(df, response_col, condition_on=None, freq='1W', save_dir=None):
+def plot_value_and_counts(df, time_col, response_col, condition_on=None, freq='1W', save_dir=None):
     """
     Performs end to end one-way factor analysis on `df` with `response_col` as the response variable, conditioned on
     `condition_on` and resampled at `freq`.
 
     If `save` is True then the plot is saved to a file, otherwise it is displayed.
     """
-    mean, counts, lower_bound, upper_bound = get_mean_and_empirical_bounds(df, freq, response_col, condition_on)
+    mean, counts, lower_bound, upper_bound = get_mean_and_empirical_bounds(df, time_col, response_col, condition_on, freq)
     fig = ms.make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1)
     fig, colors, conditions = plot_mean_and_bounds(mean, fig, lower_bound, upper_bound, row=1, col=1)
     if not condition_on:
@@ -173,10 +179,11 @@ def plot_value_and_counts(df, response_col, condition_on=None, freq='1W', save_d
             col=1
         )
     else:
+        conditioned_on = mean.columns[0]
         for color, condition in zip(colors, conditions):
             bar = go.Bar(
-                    x=counts.loc[condition].index,
-                    y=counts.loc[condition],
+                    x=counts.loc[condition, conditioned_on].index,
+                    y=counts.loc[condition, conditioned_on],
                     name=f'Counts | {condition}',
                     legendgroup=condition,
                     marker=dict(color=color),
